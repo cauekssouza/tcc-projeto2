@@ -8,7 +8,6 @@ require '../../assets/includes/security_functions.php';
 
 check_logged_out();
 
-
 if (isset($_POST['signupsubmit'])) {
 
     /*
@@ -42,15 +41,18 @@ if (isset($_POST['signupsubmit'])) {
         $data = htmlspecialchars($data);
         return $data;
     }
-    
+
+    // campos textuais
     $username       = input_filter($_POST['username']);
     $email          = input_filter($_POST['email']);
-    $password       = trim($_POST['password']);          // manter em texto limpo só em memória
-    $passwordRepeat = trim($_POST['confirmpassword']);   // sem armazenar em banco
     $headline       = input_filter($_POST['headline']);
     $bio            = input_filter($_POST['bio']);
     $full_name      = input_filter($_POST['first_name']);
     $last_name      = input_filter($_POST['last_name']);
+
+    // senha: não armazenar em texto limpo nem reprocessar depois
+    $password       = trim($_POST['password']);
+    $passwordRepeat = trim($_POST['confirmpassword']);
 
     if (isset($_POST['gender'])) 
         $gender = input_filter($_POST['gender']);
@@ -113,8 +115,8 @@ if (isset($_POST['signupsubmit'])) {
             $fileError  = $_FILES['avatar']['error'];
             $fileType   = $_FILES['avatar']['type']; 
 
-            $fileExt       = explode('.', $fileName);
-            $fileActualExt = strtolower(end($fileExt));
+            $fileExt        = explode('.', $fileName);
+            $fileActualExt  = strtolower(end($fileExt));
 
             $allowed = array('jpg', 'jpeg', 'png', 'gif');
             if (in_array($fileActualExt, $allowed)){
@@ -154,16 +156,8 @@ if (isset($_POST['signupsubmit'])) {
         */
 
         $sql = "INSERT INTO users(
-                    username, 
-                    email, 
-                    password, 
-                    first_name, 
-                    last_name, 
-                    gender, 
-                    headline, 
-                    bio, 
-                    profile_image, 
-                    created_at
+                    username, email, password, first_name, last_name, gender, 
+                    headline, bio, profile_image, created_at
                 ) VALUES ( ?,?,?,?,?,?,?,?,?, NOW() )";
 
         $stmt = mysqli_stmt_init($conn);
@@ -174,11 +168,13 @@ if (isset($_POST['signupsubmit'])) {
             exit();
         } else {
 
-            // uso de algoritmo conforme OWASP: Argon2id se disponível, senão DEFAULT
-            $algo = defined('PASSWORD_ARGON2ID') ? PASSWORD_ARGON2ID : PASSWORD_DEFAULT;
-            $hashedPwd = password_hash($password, $algo);
+            // escolha de algoritmo conforme OWASP: Argon2id se disponível, senão DEFAULT
+            $passwordAlgo = defined('PASSWORD_ARGON2ID') ? PASSWORD_ARGON2ID : PASSWORD_DEFAULT;
 
-            // tipagem estrita: todos os campos são strings (NULL permitido para $gender)
+            // hash seguro da senha (sem armazenar texto limpo)
+            $hashedPwd = password_hash($password, $passwordAlgo);
+
+            // tipagem estrita: todas as colunas aqui são strings (gender pode ser NULL)
             mysqli_stmt_bind_param(
                 $stmt,
                 "sssssssss",
@@ -212,8 +208,7 @@ if (isset($_POST['signupsubmit'])) {
 
     mysqli_stmt_close($stmt);
     mysqli_close($conn);
-} 
-else {
+} else {
 
     header("Location: ../");
     exit();
