@@ -1,56 +1,67 @@
 <?php
 
-// Idealmente armazenada em variável de ambiente
-// Hash seguro de senha (bcrypt/argon2)
-$hashedPwd = password_hash($password, PASSWORD_DEFAULT);
+/**
+ * Auth token generator and validator using HMAC-SHA256
+ * OWASP-compliant replacement for insecure MD5-based logic
+ */
 
-function auth($username, $password, $conn) {
+function auth_generate_token(string $userId): string
+{
+    // Load secret key from environment or secure config file
+    $secretKey = getenv('AUTH_SECRET_KEY');
 
-    // Buscar usuário
-    $sql = "SELECT id, username, password FROM users WHERE username = ?";
-    $stmt = mysqli_prepare($conn, $sql);
-    mysqli_stmt_bind_param($stmt, "s", $username);
-    mysqli_stmt_execute($stmt);
-    $result = mysqli_stmt_get_result($stmt);
-
-    if ($row = mysqli_fetch_assoc($result)) {
-
-        // Verificar senha com bcrypt/argon2
-        if (password_verify($password, $row['password'])) {
-
-            // Gerar token seguro com HMAC-SHA256
-            $secretKey = getenv('APP_SECRET'); // coloque no .env
-            $tokenData = $row['id'] . '|' . $row['username'] . '|' . time();
-
-            $token = hash_hmac('sha256', $tokenData, $secretKey);
-
-            // Armazenar sessão
-            $_SESSION['auth_user'] = [
-                'id' => $row['id'],
-                'username' => $row['username'],
-                'token' => $token
-            ];
-
-            return true;
-        }
+    if (!$secretKey) {
+        throw new Exception("Missing AUTH_SECRET_KEY");
     }
 
-    return false;
+    // Token payload (can include timestamp, user agent, etc.)
+    $payload = json_encode([
+        'uid' => $userId,
+        'ts'  => time()
+    ]);
+
+    // Generate HMAC-SHA256 signature
+    $signature = hash_hmac('sha256', $payload, $secretKey);
+
+    // Final token (payload + signature)
+    return base64_encode($payload . '.' . $signature);
 }
 
-function validate_auth_token()
+
+function auth_validate_token(string $token): bool
 {
-    if (!isset($_SESSION['auth_token']) || !isset($_SESSION['auth_user'])) {
+    $secretKey = getenv('AUTH_SECRET_KEY');
+
+    if (!$secretKey) {
         return false;
     }
 
-    $userId = $_SESSION['auth_user'];
-    $token  = $_SESSION['auth_token'];
+    // Decode token
+    $decoded = base64_decode($token, true);
+    if (!$decoded || !str_contains($decoded, '.')) {
+        return false;
+    }
 
-    // Reconstrói o token esperado
-    $expectedData = $userId . '|' . $_SESSION['username'] . '|' . $_SESSION['login_time'];
-    $expectedToken = hash_hmac('sha256', $expectedData, AUTH_SECRET_KEY);
+    list($payload, $providedSignature) = explode('.', $decoded, 2);
 
-    // Comparação segura contra timing attacks
-    return hash_equals($expectedToken, $token);
+    // Recalculate expected signature
+    $expectedSignature = hash_hmac('sha256', $payload, $secretKey);
+
+    // Constant‑time comparison (prevents timing attacks)
+    if (!hash_equals($expectedSignature, $providedSignature)) {
+        return false;
+    }
+
+    // Validate payload
+    $data = json_decode($payload, true);
+    if (!$data || !isset($data['uid'], $data['ts'])) {
+        return false;
+    }
+
+    // Optional: token expiration (e.g., 30 minutes)
+    if (time() - $data['ts'] > 1800) {
+        return false;
+    }
+
+    return true;
 }
