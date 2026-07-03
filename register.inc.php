@@ -8,6 +8,7 @@ require '../../assets/includes/security_functions.php';
 
 check_logged_out();
 
+
 if (isset($_POST['signupsubmit'])) {
 
     /*
@@ -34,7 +35,7 @@ if (isset($_POST['signupsubmit'])) {
 
     require '../../assets/setup/db.inc.php';
     
-    //filter POST data
+    //filter POST data (generic fields)
     function input_filter($data) {
         $data = trim($data);
         $data = stripslashes($data);
@@ -42,17 +43,20 @@ if (isset($_POST['signupsubmit'])) {
         return $data;
     }
 
-    // campos textuais
-    $username       = input_filter($_POST['username']);
-    $email          = input_filter($_POST['email']);
-    $headline       = input_filter($_POST['headline']);
-    $bio            = input_filter($_POST['bio']);
-    $full_name      = input_filter($_POST['first_name']);
-    $last_name      = input_filter($_POST['last_name']);
-
-    // senha: não armazenar em texto limpo nem reprocessar depois
-    $password       = trim($_POST['password']);
-    $passwordRepeat = trim($_POST['confirmpassword']);
+    //filter for password fields (não aplicar htmlspecialchars para não alterar o segredo)
+    function input_filter_password($data) {
+        $data = trim($data);
+        return $data;
+    }
+    
+    $username        = input_filter($_POST['username']);
+    $email           = input_filter($_POST['email']);
+    $password        = input_filter_password($_POST['password']);
+    $passwordRepeat  = input_filter_password($_POST['confirmpassword']);
+    $headline        = input_filter($_POST['headline']);
+    $bio             = input_filter($_POST['bio']);
+    $full_name       = input_filter($_POST['first_name']);
+    $last_name       = input_filter($_POST['last_name']);
 
     if (isset($_POST['gender'])) 
         $gender = input_filter($_POST['gender']);
@@ -115,8 +119,8 @@ if (isset($_POST['signupsubmit'])) {
             $fileError  = $_FILES['avatar']['error'];
             $fileType   = $_FILES['avatar']['type']; 
 
-            $fileExt        = explode('.', $fileName);
-            $fileActualExt  = strtolower(end($fileExt));
+            $fileExt       = explode('.', $fileName);
+            $fileActualExt = strtolower(end($fileExt));
 
             $allowed = array('jpg', 'jpeg', 'png', 'gif');
             if (in_array($fileActualExt, $allowed)){
@@ -125,8 +129,8 @@ if (isset($_POST['signupsubmit'])) {
 
                     if ($fileSize < 10000000){
 
-                        $FileNameNew    = uniqid('', true) . "." . $fileActualExt;
-                        $fileDestination= '../../assets/uploads/users/' . $FileNameNew;
+                        $FileNameNew   = uniqid('', true) . "." . $fileActualExt;
+                        $fileDestination = '../../assets/uploads/users/' . $FileNameNew;
                         move_uploaded_file($fileTmpName, $fileDestination);
 
                     } else {
@@ -156,8 +160,16 @@ if (isset($_POST['signupsubmit'])) {
         */
 
         $sql = "INSERT INTO users(
-                    username, email, password, first_name, last_name, gender, 
-                    headline, bio, profile_image, created_at
+                    username, 
+                    email, 
+                    password, 
+                    first_name, 
+                    last_name, 
+                    gender, 
+                    headline, 
+                    bio, 
+                    profile_image, 
+                    created_at
                 ) VALUES ( ?,?,?,?,?,?,?,?,?, NOW() )";
 
         $stmt = mysqli_stmt_init($conn);
@@ -168,13 +180,17 @@ if (isset($_POST['signupsubmit'])) {
             exit();
         } else {
 
-            // escolha de algoritmo conforme OWASP: Argon2id se disponível, senão DEFAULT
-            $passwordAlgo = defined('PASSWORD_ARGON2ID') ? PASSWORD_ARGON2ID : PASSWORD_DEFAULT;
+            // Hash de senha conforme OWASP: Argon2id se disponível, senão PASSWORD_DEFAULT
+            if (defined('PASSWORD_ARGON2ID')) {
+                $hashedPwd = password_hash($password, PASSWORD_ARGON2ID);
+            } else {
+                $hashedPwd = password_hash($password, PASSWORD_DEFAULT);
+            }
 
-            // hash seguro da senha (sem armazenar texto limpo)
-            $hashedPwd = password_hash($password, $passwordAlgo);
+            // Eliminar referências em texto claro após uso
+            unset($password, $passwordRepeat);
 
-            // tipagem estrita: todas as colunas aqui são strings (gender pode ser NULL)
+            // Prepared Statement intacto, tipagem estrita (tudo string aqui)
             mysqli_stmt_bind_param(
                 $stmt,
                 "sssssssss",
