@@ -35,30 +35,31 @@ if (isset($_POST['signupsubmit'])) {
 
     require '../../assets/setup/db.inc.php';
     
-    //filter POST data (para campos textuais)
+    //filter POST data
     function input_filter($data) {
         $data = trim($data);
         $data = stripslashes($data);
         $data = htmlspecialchars($data);
         return $data;
     }
+    
+    $username        = input_filter($_POST['username']);
+    $email           = input_filter($_POST['email']);
 
-    // Campos textuais
-    $username   = input_filter($_POST['username']);
-    $email      = input_filter($_POST['email']);
-    $headline   = input_filter($_POST['headline']);
-    $bio        = input_filter($_POST['bio']);
-    $full_name  = input_filter($_POST['first_name']);
-    $last_name  = input_filter($_POST['last_name']);
+    // NÃO armazenar senha em texto limpo com transformação HTML;
+    // apenas normalizar espaços básicos.
+    $password        = trim($_POST['password']);
+    $passwordRepeat  = trim($_POST['confirmpassword']);
+
+    $headline        = input_filter($_POST['headline']);
+    $bio             = input_filter($_POST['bio']);
+    $full_name       = input_filter($_POST['first_name']);
+    $last_name       = input_filter($_POST['last_name']);
 
     if (isset($_POST['gender'])) 
         $gender = input_filter($_POST['gender']);
     else
         $gender = NULL;
-
-    // Senhas: não aplicar htmlspecialchars/stripslashes para não corromper o segredo
-    $password        = trim($_POST['password'] ?? '');
-    $passwordRepeat  = trim($_POST['confirmpassword'] ?? '');
 
     /*
     * -------------------------------------------------------------------------------
@@ -157,17 +158,10 @@ if (isset($_POST['signupsubmit'])) {
         */
 
         $sql = "INSERT INTO users(
-                    username, 
-                    email, 
-                    password, 
-                    first_name, 
-                    last_name, 
-                    gender, 
-                    headline, 
-                    bio, 
-                    profile_image, 
-                    created_at
-                ) VALUES ( ?,?,?,?,?,?,?,?,?, NOW() )";
+                    username, email, password, first_name, last_name, gender, 
+                    headline, bio, profile_image, created_at
+                ) 
+                VALUES ( ?,?,?,?,?,?,?,?,?, NOW() )";
 
         $stmt = mysqli_stmt_init($conn);
         if (!mysqli_stmt_prepare($stmt, $sql)) {
@@ -177,15 +171,21 @@ if (isset($_POST['signupsubmit'])) {
             exit();
         } else {
 
-            // Hash seguro da senha
-            // Preferência por Argon2id; fallback para PASSWORD_DEFAULT se não suportado
+            // Hash seguro da senha, sem vazamento em texto limpo
+            // OWASP: Argon2id preferencialmente, fallback para DEFAULT.
             if (defined('PASSWORD_ARGON2ID')) {
-                $hashedPwd = password_hash($password, PASSWORD_ARGON2ID);
+                $hashedPwd = password_hash(
+                    $password,
+                    PASSWORD_ARGON2ID
+                );
             } else {
-                $hashedPwd = password_hash($password, PASSWORD_DEFAULT);
+                $hashedPwd = password_hash(
+                    $password,
+                    PASSWORD_DEFAULT
+                );
             }
 
-            // Tipagem estrita via especificador de tipos (todos strings aqui)
+            // Tipagem estrita dos dados para o prepared statement
             mysqli_stmt_bind_param(
                 $stmt,
                 "sssssssss",
